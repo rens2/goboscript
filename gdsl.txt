@@ -7,7 +7,7 @@ Length   length   STRING  |
 Round    round    NUM     |
 Abs      mathop   ...     | OPERATOR=abs
 Floor    ...      ...     | ...=floor
-Ceil     ...      ...     | ...=ceil
+Ceil     ...      ...     | ...=ceiling
 Sqrt     ...      ...     | ...=sqrt
 Sin      ...      ...     | ...=sin
 Cos      ...      ...     | ...=cos
@@ -41,6 +41,7 @@ Of       letter_of  STRING    LETTER
 Le~
 Ge~
 Ne~
+FloorDiv~
 
 BLOCKS
 

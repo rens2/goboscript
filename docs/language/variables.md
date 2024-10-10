@@ -26,7 +26,7 @@ Local variables is a feature of goboscript, which lets you define a variable whi
 only be used inside a procedure and is not accessible outside of it.
 
 ```goboscript
-define my_procedure {
+proc my_procedure {
     local x = 0;
     x = x + 1;
 }
@@ -56,8 +56,11 @@ x += 1;
 x -= 1;
 x *= 2;
 x /= 2;
+x //= 2; # Floor Division
 x %= 2;
 x &= "str";
+x++; # Increment by 1
+x--; # Decrement by 1
 ```
 
 The `-=` statement is implemented using the change variable block.

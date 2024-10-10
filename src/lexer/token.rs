@@ -89,6 +89,8 @@ pub enum Token {
     AssignMultiply,
     #[token("/=")]
     AssignDivide,
+    #[token("//=")]
+    AssignFloorDiv,
     #[token("%=")]
     AssignModulo,
     #[token("&=")]
@@ -127,6 +129,8 @@ pub enum Token {
     Star,
     #[token("/")]
     Slash,
+    #[token("//")]
+    FloorDiv,
     #[token("%")]
     Percent,
     #[token(";")]
@@ -183,4 +187,8 @@ pub enum Token {
     As,
     #[token("enum")]
     Enum,
+    #[token("true")]
+    True,
+    #[token("false")]
+    False,
 }

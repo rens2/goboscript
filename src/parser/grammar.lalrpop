@@ -69,10 +69,13 @@ Stmt: Stmt = {
         }
         Stmt::SetVar { name: name.clone(), span: l..r, value, is_local: false }
     },
+    <l:@L> <name:NAME> <r:@R> "++" ";" => Stmt::ChangeVar { name, span: l..r, value: Expr::Int(1).into() },
+    <l:@L> <name:NAME> <r:@R> "--" ";" => Stmt::ChangeVar { name, span: l..r, value: Expr::Int(-1).into() },
     <l:@L> <name:NAME> <r:@R> "+=" <value:Expr> ";" => Stmt::ChangeVar { name, span: l..r, value },
     <l:@L> <name:NAME> <r:@R> "-=" <value:Expr> ";" => Stmt::ChangeVar { name,               span: l..r, value: BinOp::Sub .to_expr(Expr::Int(0).into(), value).into()},
     <l:@L> <name:NAME> <r:@R> "*=" <value:Expr> ";" => Stmt::SetVar { name: name.clone(), span: l..r, value: BinOp::Mul .to_expr(Expr::Name { name: name.clone(), span: l..r }.into(), value).into(), is_local: false },
     <l:@L> <name:NAME> <r:@R> "/=" <value:Expr> ";" => Stmt::SetVar { name: name.clone(), span: l..r, value: BinOp::Div .to_expr(Expr::Name { name: name.clone(), span: l..r }.into(), value).into(), is_local: false },
+    <l:@L> <name:NAME> <r:@R> "//=" <value:Expr> ";" => Stmt::SetVar { name: name.clone(), span: l..r, value: BinOp::FloorDiv .to_expr(Expr::Name { name: name.clone(), span: l..r }.into(), value).into(), is_local: false },
     <l:@L> <name:NAME> <r:@R> "%=" <value:Expr> ";" => Stmt::SetVar { name: name.clone(), span: l..r, value: BinOp::Mod .to_expr(Expr::Name { name: name.clone(), span: l..r }.into(), value).into(), is_local: false },
     <l:@L> <name:NAME> <r:@R> "&=" <value:Expr> ";" => Stmt::SetVar { name: name.clone(), span: l..r, value: BinOp::Join.to_expr(Expr::Name { name: name.clone(), span: l..r }.into(), value).into(), is_local: false },
     SHOW <l:@L> <name:NAME> <r:@R> ";" => Stmt::Show { name, span: l..r },
@@ -90,9 +93,12 @@ Stmt: Stmt = {
     INSERT <value:Expr> AT <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" ";" => Stmt::ListInsert { name, span: l..r, index, value },
     <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" "=" <value:Expr> ";" => Stmt::ListSet { name, span: l..r, index, value },
     <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" "+=" <value:Expr> ";" => Stmt::ListChange { op: BinOp::Add,  name, span: l..r, index, value },
+    <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" "++" ";" => Stmt::ListChange { op: BinOp::Add,  name, span: l..r, index, value: Expr::Int(1).into() },
+    <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" "--" ";" => Stmt::ListChange { op: BinOp::Add,  name, span: l..r, index, value: Expr::Int(-1).into() },
     <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" "-=" <value:Expr> ";" => Stmt::ListChange { op: BinOp::Sub,  name, span: l..r, index, value },
     <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" "*=" <value:Expr> ";" => Stmt::ListChange { op: BinOp::Mul,  name, span: l..r, index, value },
     <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" "/=" <value:Expr> ";" => Stmt::ListChange { op: BinOp::Div,  name, span: l..r, index, value },
+    <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" "//=" <value:Expr> ";" => Stmt::ListChange { op: BinOp::FloorDiv,  name, span: l..r, index, value },
     <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" "%=" <value:Expr> ";" => Stmt::ListChange { op: BinOp::Mod,  name, span: l..r, index, value },
     <l:@L> <name:NAME> <r:@R> "[" <index:Expr> "]" "&=" <value:Expr> ";" => Stmt::ListChange { op: BinOp::Join, name, span: l..r, index, value },
     <l:@L> <name:NAME> <r:@R> <args:Exprs> ";" => match Block::from_shape(&name, args.len()) {
@@ -138,6 +144,7 @@ Expr: Rrc<Expr> = {
     #[precedence(level="3")] #[assoc(side="left")]
     <lhs:Expr> "*"  <rhs:Expr> => BinOp::Mul.to_expr(lhs, rhs).into(),
     <lhs:Expr> "/"  <rhs:Expr> => BinOp::Div.to_expr(lhs, rhs).into(),
+    <lhs:Expr> "//"  <rhs:Expr> => BinOp::FloorDiv.to_expr(lhs, rhs).into(),
     <lhs:Expr> "%"  <rhs:Expr> => BinOp::Mod.to_expr(lhs, rhs).into(),
     #[precedence(level="4")] #[assoc(side="left")]
     <lhs:Expr> "+"  <rhs:Expr> => BinOp::Add.to_expr(lhs, rhs).into(),
@@ -161,6 +168,8 @@ Expr: Rrc<Expr> = {
 
 Term: Rrc<Expr> = {
     "(" <Expr> ")",
+    TRUE          => Expr::Int(1).into(),
+    FALSE         => Expr::Int(0).into(),
     <value:INT>   => Expr::Int(value).into(),
     <value:HEX>   => Expr::Int(value).into(),
     <value:OCT>   => Expr::Int(value).into(),
@@ -248,6 +257,7 @@ extern {
         "-="           => Token::AssignSubtract,
         "*="           => Token::AssignMultiply,
         "/="           => Token::AssignDivide,
+        "//="           => Token::AssignFloorDiv,
         "%="           => Token::AssignModulo,
         "&="           => Token::AssignJoin,
         "["            => Token::LBracket,
@@ -267,6 +277,7 @@ extern {
         "-"            => Token::Minus,
         "*"            => Token::Star,
         "/"            => Token::Slash,
+        "//"            => Token::FloorDiv,
         "%"            => Token::Percent,
         ";"            => Token::Semicolon,
         LENGTH         => Token::Length,
@@ -295,5 +306,7 @@ extern {
         OF             => Token::Of,
         AS             => Token::As,
         ENUM           => Token::Enum,
+        TRUE           => Token::True,
+        FALSE          => Token::False,
     }
 }

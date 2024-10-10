@@ -20,7 +20,10 @@ use self::{
     node_id::{NodeID, NodeIDFactory},
 };
 use crate::{
-    ast::{Costume, Event, EventDetail, Expr, Proc, Project, Sprite, Stmt, Stmts},
+    ast::{
+        Costume, Event, EventDetail, Expr, OnMessage, Proc, Project, Sprite, Stmt,
+        Stmts,
+    },
     blocks::{BinOp, Block, UnOp},
     config::Config,
     diagnostic::{keys::is_key, Diagnostic, DiagnosticKind},
@@ -217,7 +220,10 @@ where T: Write + Seek
         for event in &sprite.events {
             self.event(S { stage, sprite, proc: None }, diags, event)?;
         }
-        // TODO: sprite.on_messages
+        for on_msg in &sprite.on_messages {
+            self.on_message(S { stage, sprite, proc: None }, diags, on_msg.1)?;
+        }
+
         self.write_all(br#"},"costumes":["#)?;
         let mut comma = false;
         for costume in &sprite.costumes {
@@ -266,6 +272,12 @@ where T: Write + Seek
                 json!(*list.name),
                 json!(list.default)
             )?;
+        }
+        self.write_all(br#"},"broadcasts":{"#)?;
+        let mut comma = false;
+        for broadcast_name in sprite.broadcasts.iter() {
+            self.comma(&mut comma)?;
+            write!(self, r#"{}:{}"#, json!(**broadcast_name), json!(**broadcast_name),)?;
         }
         // FIXME: Can you please fucking implement sounds this time?
         self.write_all(br#"},"sounds":[]}"#)?;
@@ -372,7 +384,25 @@ where T: Write + Seek
         self.warp(proc.warp)?;
         self.end_obj()?;
         self.end_obj()?;
-        self.stmts(s, d, &proc.body, next_id, Some(next_id))
+        self.stmts(s, d, &proc.body, next_id, Some(this_id))
+    }
+
+    fn on_message(&mut self, s: S, d: D, on_message: &OnMessage) -> Result<()> {
+        let this_id = self.id.new_id();
+        let next_id = self.id.new_id();
+        self.node(
+            Node::new("event_whenbroadcastreceived", this_id)
+                .some_next_id((!on_message.body.is_empty()).then_some(next_id))
+                .top_level(true),
+        )?;
+
+        write!(
+            self,
+            r#","fields":{{"BROADCAST_OPTION":[{},{}]}}}}"#,
+            json!(*on_message.message),
+            json!(*on_message.message)
+        )?;
+        self.stmts(s, d, &on_message.body, next_id, Some(this_id))
     }
 
     fn event(&mut self, s: S, d: D, event: &Event) -> Result<()> {
@@ -422,7 +452,7 @@ where T: Write + Seek
                 self.end_obj()?;
             }
         }
-        self.stmts(s, d, &event.body, next_id, Some(next_id))
+        self.stmts(s, d, &event.body, next_id, Some(this_id))
     }
 
     fn stmts(
@@ -561,7 +591,36 @@ where T: Write + Seek
                 self.expr(s, d, &index.borrow(), index_id, this_id)?;
                 self.expr(s, d, &value.borrow(), value_id, this_id)?;
             }
-            Stmt::ListChange { .. } => unreachable!(),
+            Stmt::ListChange { index, name, op, span, value } => {
+                let index_id = self.id.new_id();
+                let value_id = self.id.new_id();
+                let nameexpr = Expr::Name { name: name.clone(), span: span.clone() };
+                let expr = match op {
+                    BinOp::FloorDiv => UnOp::Floor
+                        .to_expr(
+                            BinOp::Div.to_expr(nameexpr.into(), index.clone()).into(),
+                        )
+                        .into(),
+                    _ => Expr::BinOp {
+                        op: *op,
+                        lhs: Expr::BinOp {
+                            op: BinOp::Of,
+                            lhs: nameexpr.into(),
+                            rhs: index.clone(),
+                        }
+                        .into(),
+                        rhs: value.clone(),
+                    },
+                };
+                self.list(s, d, name, span);
+                self.input(s, d, "INDEX", &index.borrow(), index_id)?;
+                self.input(s, d, "ITEM", &expr, value_id)?;
+                self.end_obj()?;
+                self.single_field_id("LIST", name)?;
+                self.end_obj()?;
+                self.expr(s, d, &index.borrow(), index_id, this_id)?;
+                self.expr(s, d, &expr, value_id, this_id)?;
+            }
             Stmt::Block { block, span, args } => {
                 if args.len() != block.args().len() {
                     d.push(
@@ -965,27 +1024,39 @@ where T: Write + Seek
                             .to_diagnostic(span.clone()),
                     );
                 }
-                self.input_shadow(shadow_id, name)
+                self.input_shadow(s, shadow_id, name)
             }
             _ => {
                 if name == "CONDITION" || name == "CONDITION2" {
                     return write!(self, r#"[2,{this_id}]"#);
                 }
                 write!(self, r#"[3,{this_id},"#)?;
-                self.input_shadow(shadow_id, name)
+                self.input_shadow(s, shadow_id, name)
             }
         }
     }
 
     fn input_shadow(
         &mut self,
+        s: S,
         shadow_id: Option<NodeID>,
         name: &str,
     ) -> io::Result<()> {
         if let Some(shadow_id) = shadow_id {
             write!(self, "{shadow_id}]")
         } else if name == "BROADCAST_INPUT" {
-            self.write_all(br#"[11,"message1","message1"]]"#)
+            let broadcast_name = match s.stage {
+                Some(stage) => {
+                    stage.broadcasts.iter().min().expect("no broadcasts?").clone()
+                }
+                None => "message1".into(),
+            };
+            write!(
+                self,
+                r#"[11,{},{}]]"#,
+                json!(*broadcast_name),
+                json!(*broadcast_name)
+            )
         } else {
             self.write_all(br#"[10,""]]"#)
         }
